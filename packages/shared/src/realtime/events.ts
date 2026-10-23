@@ -7,7 +7,7 @@
  * the field and awards placement points to teams.
  */
 import type { Difficulty } from '../sim/difficulty';
-import type { Outcome, RunResult } from '../sim/simulation';
+import type { AbilityLoadout, Outcome, RunResult } from '../sim/simulation';
 import type { StageId } from '../sim/stages';
 import type { ErrorCode } from '../api/types';
 import type { RaceProgressInput } from '../api/schemas';
@@ -40,6 +40,8 @@ export interface RacePlayerDTO {
   score: number | null;
   placement: number | null;
   dnf: boolean;
+  /** Abilities issued for this race (the client must simulate with exactly these). */
+  abilities: AbilityLoadout | null;
 }
 
 export interface RaceRoomDTO {

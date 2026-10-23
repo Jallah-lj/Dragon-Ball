@@ -171,7 +171,7 @@ export const LEADERBOARD_PAGE_SIZE = 20;
 
 export const leaderboardQuerySchema = z.object({
   difficulty: z.enum(DIFFICULTY_IDS).default('medium'),
-  period: z.enum(['weekly', 'all']).default('weekly'),
+  period: z.enum(['daily', 'weekly', 'all']).default('weekly'),
   page: z.coerce.number().int().min(1).max(500).default(1),
 });
 

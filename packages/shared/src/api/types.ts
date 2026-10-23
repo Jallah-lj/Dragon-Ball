@@ -141,7 +141,7 @@ export interface LeaderboardEntryDTO {
 
 export interface LeaderboardPageDTO {
   difficulty: Difficulty;
-  period: 'weekly' | 'all';
+  period: 'daily' | 'weekly' | 'all';
   periodKey: string;
   page: number;
   pageSize: number;
@@ -258,4 +258,19 @@ export interface ConfigDTO {
   emailEnabled: boolean;
   raceMinPlayers: number;
   raceMaxPlayers: number;
+}
+
+/** Public player profile — display data only (no email, no account details). */
+export interface PublicProfileDTO {
+  id: string;
+  displayName: string;
+  avatar: string;
+  level: number;
+  joinedAt: string;
+  team: { id: string; name: string; tag: string } | null;
+  achievements: { id: string; unlockedAt: string }[];
+  bestScores: Record<Difficulty, number>;
+  catches: number;
+  races: number;
+  raceWins: number;
 }
