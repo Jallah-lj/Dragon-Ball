@@ -138,7 +138,8 @@ export async function buildApp(
     });
   }
 
-  registerErrorHandling(app);
+  const staticDir = resolveStaticDir(config);
+  registerErrorHandling(app, { spa: staticDir !== null });
   registerAuth(app, ctx);
 
   healthRoutes(app, ctx);
@@ -149,7 +150,6 @@ export async function buildApp(
   teamRoutes(app, ctx);
   collectionRoutes(app, ctx);
 
-  const staticDir = resolveStaticDir(config);
   if (staticDir) {
     await app.register(fastifyStatic, {
       root: staticDir,
@@ -161,17 +161,6 @@ export async function buildApp(
           res.header('cache-control', 'public, max-age=31536000, immutable');
         else res.header('cache-control', 'no-cache');
       },
-    });
-    // SPA fallback: unknown non-API GET routes render the client app.
-    app.setNotFoundHandler((request, reply) => {
-      if (
-        request.method === 'GET' &&
-        !request.url.startsWith('/api/') &&
-        !request.url.startsWith('/socket.io')
-      ) {
-        return reply.header('cache-control', 'no-cache').sendFile('index.html');
-      }
-      return reply.status(404).send(sendError('NOT_FOUND', 'No such endpoint.'));
     });
     app.log.info({ staticDir }, 'serving web client');
   }

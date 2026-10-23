@@ -15,7 +15,7 @@ import {
 } from '@dbfc/shared';
 import type { AppContext } from '../context';
 import { sessions, users } from '../db/schema';
-import { sha256 } from '../lib/crypto';
+import { tokenDigest } from '../lib/crypto';
 import { AppError } from '../lib/errors';
 import type { UserRow } from '../services/users';
 import { MemoryRoomStore, RedisRoomStore } from './roomStore';
@@ -122,7 +122,7 @@ export function attachRealtime(
         .innerJoin(users, eq(users.id, sessions.userId))
         .where(
           and(
-            eq(sessions.tokenHash, sha256(token)),
+            eq(sessions.tokenHash, tokenDigest(ctx.config.SESSION_SECRET, token)),
             isNull(sessions.revokedAt),
             gt(sessions.expiresAt, new Date()),
           ),

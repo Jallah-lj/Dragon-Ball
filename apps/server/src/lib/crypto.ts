@@ -13,6 +13,15 @@ export function hmac(secret: string, value: string): string {
   return createHmac('sha256', secret).update(value).digest('base64url');
 }
 
+/**
+ * Digest stored for session and email tokens: HMAC-SHA256 keyed with
+ * SESSION_SECRET. A leaked database alone cannot validate tokens, and rotating
+ * the secret invalidates every session at once.
+ */
+export function tokenDigest(secret: string, token: string): string {
+  return hmac(secret, token);
+}
+
 export function safeEqual(a: string, b: string): boolean {
   const ab = Buffer.from(a);
   const bb = Buffer.from(b);

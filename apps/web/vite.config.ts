@@ -20,6 +20,8 @@ export default defineConfig(({ mode }) => {
     envDir: '../..',
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),
+      // `vite build --mode e2e` produces a test build exposing automation hooks.
+      'import.meta.env.VITE_E2E': JSON.stringify(mode === 'e2e' ? 'true' : (env.VITE_E2E ?? '')),
     },
     server: { host: '0.0.0.0', port: 5173, allowedHosts: true, proxy },
     preview: { host: '0.0.0.0', port: 4173, allowedHosts: true, proxy },

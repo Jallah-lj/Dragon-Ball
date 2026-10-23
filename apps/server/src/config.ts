@@ -29,6 +29,8 @@ const schema = z.object({
   RUN_MIN_WALLCLOCK_RATIO: z.coerce.number().min(0).max(1).default(0.9),
   RATE_LIMIT_ENABLED: bool.default(true),
   STATIC_DIR: z.string().default(''),
+  /** Cookie SameSite policy. 'none' (always Secure) is only for apps embedded in cross-site iframes. */
+  COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none']).default('lax'),
   /** CSP frame-ancestors (space separated). Use '*' only if the app must be embeddable. */
   FRAME_ANCESTORS: z.string().default("'self'"),
   MIGRATIONS_DIR: z.string().default(''),

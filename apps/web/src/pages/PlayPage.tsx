@@ -53,7 +53,11 @@ function randomSeed(): number {
 
 declare global {
   interface Window {
-    __dbfc?: { session: GameSession | null; setAutopilot(on: boolean): void };
+    __dbfc?: {
+      session: GameSession | null;
+      setAutopilot(on: boolean): void;
+      setTimeScale?(n: number): void;
+    };
   }
 }
 
@@ -145,7 +149,12 @@ export default function PlayPage() {
           }
           return;
         }
-        if (!isNetworkError(err) && !(err instanceof ApiError && err.status === 429)) {
+        // Network down, rate limited, or the browser refused our session cookie
+        // (401 after creating a guest): fall back to an offline run.
+        if (
+          !isNetworkError(err) &&
+          !(err instanceof ApiError && (err.status === 429 || err.status === 401))
+        ) {
           if (id === attempt.current) {
             setError(errorMessage(err));
             setPhase('error');
@@ -268,7 +277,13 @@ export default function PlayPage() {
     );
     offs.push(() => clearTimeout(hintTimer));
     if (import.meta.env.VITE_E2E === 'true') {
-      window.__dbfc = { session, setAutopilot: (on) => session.setAutopilot(on) };
+      window.__dbfc = {
+        session,
+        setAutopilot: (on) => session.setAutopilot(on),
+        setTimeScale: (n) => {
+          session.timeScale = n;
+        },
+      };
     }
     return () => offs.forEach((off) => off());
   }, [session, setup, submit]);

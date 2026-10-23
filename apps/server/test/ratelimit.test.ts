@@ -33,3 +33,28 @@ describe('rate limiting', () => {
     expect((await c.get('/api/health')).json()).toMatchObject({ ok: true, db: true, redis: null });
   });
 });
+
+describe('serving the web client', () => {
+  it('serves index.html for client routes and JSON 404s for unknown API routes', async () => {
+    const { mkdtemp, writeFile, mkdir } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const dir = await mkdtemp(join(tmpdir(), 'dbfc-static-'));
+    await mkdir(join(dir, 'assets'));
+    await writeFile(join(dir, 'index.html'), '<!doctype html><title>Forest Chase</title>');
+    await writeFile(join(dir, 'assets', 'app.js'), 'console.log(1)');
+    const spa = await createTestApp({ RATE_LIMIT_ENABLED: false, STATIC_DIR: dir });
+    try {
+      const page = await spa.app.inject({ method: 'GET', url: '/team' });
+      expect(page.statusCode).toBe(200);
+      expect(page.body).toContain('Forest Chase');
+      const asset = await spa.app.inject({ method: 'GET', url: '/assets/app.js' });
+      expect(asset.headers['cache-control']).toContain('immutable');
+      const api = await spa.app.inject({ method: 'GET', url: '/api/missing' });
+      expect(api.statusCode).toBe(404);
+      expect(api.json().error.code).toBe('NOT_FOUND');
+    } finally {
+      await spa.close();
+    }
+  });
+});

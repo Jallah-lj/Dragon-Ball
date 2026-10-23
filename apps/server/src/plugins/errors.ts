@@ -11,7 +11,11 @@ export function sendError(
   return { error: { code, message, ...(details !== undefined ? { details } : {}) } };
 }
 
-export function registerErrorHandling(app: FastifyInstance): void {
+/**
+ * Error envelope + the single not-found handler. With `spa`, unknown non-API
+ * GET routes render the client app (index.html) instead of a 404.
+ */
+export function registerErrorHandling(app: FastifyInstance, options: { spa?: boolean } = {}): void {
   app.setErrorHandler((error: FastifyError | Error, request, reply) => {
     if (error instanceof AppError) {
       return reply.status(error.status).send(sendError(error.code, error.message, error.details));
@@ -48,9 +52,11 @@ export function registerErrorHandling(app: FastifyInstance): void {
   });
 
   app.setNotFoundHandler((request, reply) => {
-    if (request.url.startsWith('/api/')) {
-      return reply.status(404).send(sendError('NOT_FOUND', 'No such endpoint.'));
+    const isApi = request.url.startsWith('/api/') || request.url.startsWith('/socket.io');
+    if (options.spa && request.method === 'GET' && !isApi) {
+      return reply.header('cache-control', 'no-cache').sendFile('index.html');
     }
+    if (isApi) return reply.status(404).send(sendError('NOT_FOUND', 'No such endpoint.'));
     return reply.status(404).send('Not found');
   });
 }

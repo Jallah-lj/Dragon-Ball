@@ -17,6 +17,7 @@ import {
   type StageId,
 } from '@dbfc/shared';
 import { loadConfig } from '../config';
+import { loadDotEnv } from '../env';
 import type { AppContext } from '../context';
 import { hashPassword } from '../lib/password';
 import { randomToken } from '../lib/crypto';
@@ -34,6 +35,7 @@ const PLAYERS: { username: string; displayName: string; skin: string; skill: num
 ];
 
 async function main() {
+  loadDotEnv();
   const config = loadConfig({ ...process.env, RUN_MIN_WALLCLOCK_RATIO: '0' });
   const database = await createDatabase(config.DATABASE_URL, config.MIGRATIONS_DIR);
   await database.migrate();

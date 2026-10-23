@@ -205,6 +205,9 @@ export class GameSession {
 
   // --------------------------------------------------------------- Pause
 
+  /** Test builds only: simulate faster than real time (never used in races). */
+  timeScale = 1;
+
   /** Race only: the in-race menu is open (the race itself never pauses). */
   raceMenuOpen = false;
 
@@ -293,13 +296,19 @@ export class GameSession {
       return steps;
     }
     if (this.paused) return 0;
-    this.acc += Math.min(deltaMs, 250);
-    while (this.acc >= STEP_MS && steps < MAX_STEPS_PER_FRAME && !this.finished && !this.paused) {
+    const scale = Math.max(1, this.timeScale);
+    this.acc += Math.min(deltaMs, 250) * scale;
+    while (
+      this.acc >= STEP_MS &&
+      steps < MAX_STEPS_PER_FRAME * scale &&
+      !this.finished &&
+      !this.paused
+    ) {
       this.stepOnce();
       this.acc -= STEP_MS;
       steps++;
     }
-    if (steps >= MAX_STEPS_PER_FRAME) this.acc = Math.min(this.acc, STEP_MS);
+    if (steps >= MAX_STEPS_PER_FRAME * scale) this.acc = Math.min(this.acc, STEP_MS);
     this.alpha = this.paused ? 1 : Math.min(1, this.acc / STEP_MS);
     return steps;
   }

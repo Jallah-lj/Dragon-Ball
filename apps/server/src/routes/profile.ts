@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { computeUnlocks, updateProfileSchema, type ProgressDTO } from '@dbfc/shared';
 import type { AppContext } from '../context';
 import { emailTokens, users, userSettings } from '../db/schema';
-import { randomToken, sha256 } from '../lib/crypto';
+import { randomToken, tokenDigest } from '../lib/crypto';
 import { AppError } from '../lib/errors';
 import { requireUser } from '../plugins/auth';
 import { ownedSkins } from '../services/collection';
@@ -48,7 +48,7 @@ export function profileRoutes(app: FastifyInstance, ctx: AppContext): void {
         userId: user.id,
         purpose: 'verify',
         email: verifyEmail,
-        tokenHash: sha256(token),
+        tokenHash: tokenDigest(ctx.config.SESSION_SECRET, token),
         expiresAt: new Date(Date.now() + 48 * 3_600_000),
       });
       await ctx.mailer.send({

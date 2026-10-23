@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import type { AppContext } from '../context';
 import { sessions, users } from '../db/schema';
-import { randomToken, safeEqual, sha256 } from '../lib/crypto';
+import { randomToken, safeEqual, tokenDigest } from '../lib/crypto';
 import { AppError } from '../lib/errors';
 
 export type UserRow = typeof users.$inferSelect;
@@ -25,11 +25,13 @@ export function cookieOptions(
   httpOnly: boolean,
   maxAgeSeconds: number,
 ) {
+  const sameSite = ctx.config.COOKIE_SAMESITE;
   return {
     path: '/',
     httpOnly,
-    sameSite: 'lax' as const,
-    secure: ctx.config.secureCookies || request.protocol === 'https',
+    sameSite,
+    // Browsers only accept SameSite=None cookies when they are Secure.
+    secure: ctx.config.secureCookies || request.protocol === 'https' || sameSite === 'none',
     maxAge: maxAgeSeconds,
   };
 }
@@ -52,9 +54,8 @@ export function clearSessionCookie(
   request: FastifyRequest,
   reply: FastifyReply,
 ): void {
-  reply.clearCookie(SESSION_COOKIE, { path: '/' });
-  void ctx;
-  void request;
+  const { path, sameSite, secure } = cookieOptions(ctx, request, true, 0);
+  reply.clearCookie(SESSION_COOKIE, { path, sameSite, secure });
 }
 
 /** Issue a fresh CSRF token (double-submit cookie) and return it. */
@@ -114,7 +115,7 @@ export function registerAuth(app: FastifyInstance, ctx: AppContext): void {
       .innerJoin(users, eq(users.id, sessions.userId))
       .where(
         and(
-          eq(sessions.tokenHash, sha256(token)),
+          eq(sessions.tokenHash, tokenDigest(ctx.config.SESSION_SECRET, token)),
           isNull(sessions.revokedAt),
           gt(sessions.expiresAt, now),
         ),

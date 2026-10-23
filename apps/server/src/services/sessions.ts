@@ -2,10 +2,11 @@ import { and, desc, eq, isNull, ne } from 'drizzle-orm';
 import type { SessionInfoDTO } from '@dbfc/shared';
 import type { Db } from '../db/client';
 import { sessions } from '../db/schema';
-import { randomToken, sha256 } from '../lib/crypto';
+import { randomToken, tokenDigest } from '../lib/crypto';
 
 export async function createSession(
   db: Db,
+  secret: string,
   userId: string,
   userAgent: string | undefined,
   ttlDays: number,
@@ -15,7 +16,7 @@ export async function createSession(
     .insert(sessions)
     .values({
       userId,
-      tokenHash: sha256(token),
+      tokenHash: tokenDigest(secret, token),
       userAgent: userAgent?.slice(0, 300) ?? null,
       expiresAt: new Date(Date.now() + ttlDays * 86_400_000),
     })

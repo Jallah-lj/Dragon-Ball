@@ -16,7 +16,7 @@ import {
 import type { AppContext } from '../context';
 import type { Db } from '../db/client';
 import { emailTokens, users } from '../db/schema';
-import { randomCode, randomToken, sha256 } from '../lib/crypto';
+import { randomCode, randomToken, tokenDigest } from '../lib/crypto';
 import { AppError } from '../lib/errors';
 import { dummyHash, hashPassword, verifyPassword } from '../lib/password';
 import {
@@ -51,6 +51,7 @@ async function startSession(
   if (request.sessionId) await revokeSession(ctx.db, request.sessionId);
   const { token, id } = await createSession(
     ctx.db,
+    ctx.config.SESSION_SECRET,
     user.id,
     userAgent(request),
     ctx.config.SESSION_TTL_DAYS,
@@ -72,7 +73,7 @@ async function sendEmailToken(
     userId: user.id,
     purpose,
     email,
-    tokenHash: sha256(token),
+    tokenHash: tokenDigest(ctx.config.SESSION_SECRET, token),
     expiresAt: new Date(Date.now() + (purpose === 'verify' ? VERIFY_TTL_MS : RESET_TTL_MS)),
   });
   const base = ctx.config.PUBLIC_URL.replace(/\/$/, '');
@@ -88,13 +89,18 @@ async function sendEmailToken(
   });
 }
 
-async function consumeEmailToken(db: Db, token: string, purpose: 'verify' | 'reset') {
+async function consumeEmailToken(
+  db: Db,
+  secret: string,
+  token: string,
+  purpose: 'verify' | 'reset',
+) {
   const rows = await db
     .update(emailTokens)
     .set({ usedAt: new Date() })
     .where(
       and(
-        eq(emailTokens.tokenHash, sha256(token)),
+        eq(emailTokens.tokenHash, tokenDigest(secret, token)),
         eq(emailTokens.purpose, purpose),
         isNull(emailTokens.usedAt),
         gt(emailTokens.expiresAt, new Date()),
@@ -256,7 +262,7 @@ export function authRoutes(app: FastifyInstance, ctx: AppContext): void {
 
   app.post('/api/auth/reset', { config: limit(10, '15 minutes') }, async (request, reply) => {
     const input = resetPasswordSchema.parse(request.body);
-    const token = await consumeEmailToken(ctx.db, input.token, 'reset');
+    const token = await consumeEmailToken(ctx.db, ctx.config.SESSION_SECRET, input.token, 'reset');
     if (!token)
       throw new AppError(
         'BAD_REQUEST',
@@ -276,7 +282,12 @@ export function authRoutes(app: FastifyInstance, ctx: AppContext): void {
     { config: limit(20, '15 minutes') },
     async (request, reply) => {
       const input = verifyEmailSchema.parse(request.body);
-      const token = await consumeEmailToken(ctx.db, input.token, 'verify');
+      const token = await consumeEmailToken(
+        ctx.db,
+        ctx.config.SESSION_SECRET,
+        input.token,
+        'verify',
+      );
       if (!token)
         throw new AppError('BAD_REQUEST', 'This verification link is invalid or has expired.');
       const rows = await ctx.db.select().from(users).where(eq(users.id, token.userId)).limit(1);
