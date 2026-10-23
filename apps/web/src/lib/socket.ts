@@ -1,5 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 import type { ClientToServerEvents, ServerToClientEvents } from '@dbfc/shared';
+import { getSessionToken } from './api';
 
 export type RaceSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
@@ -17,6 +18,11 @@ export function getSocket(): RaceSocket {
       reconnection: true,
       reconnectionDelay: 500,
       reconnectionDelayMax: 4000,
+      // Cookie-less fallback: send the header token (re-read on every reconnect).
+      auth: (cb: (data: object) => void) => {
+        const token = getSessionToken();
+        cb(token ? { token } : {});
+      },
     };
     socket = (BASE ? io(BASE, opts) : io(opts)) as RaceSocket;
   }

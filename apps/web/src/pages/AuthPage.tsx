@@ -4,7 +4,7 @@ import { loginSchema, registerSchema } from '@dbfc/shared';
 import { Icon } from '../components/Icons';
 import { Alert, Field, Tabs, useDocumentTitle } from '../components/ui';
 import { useToast } from '../components/Toast';
-import { errorMessage, fieldErrors } from '../lib/api';
+import { errorMessage, fieldErrors, isTokenMode } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { validate } from '../lib/forms';
 
@@ -228,6 +228,12 @@ export function AuthPage() {
         {auth.status === 'offline' && (
           <Alert kind="warn">
             The server is offline, so accounts are unavailable. You can still play solo.
+          </Alert>
+        )}
+        {isTokenMode() && auth.status !== 'offline' && (
+          <Alert kind="info" title="Cookies are blocked here">
+            Your browser blocks cookies in this frame (for example inside an embedded preview), so
+            you'll stay signed in only in this tab. Open the game in its own tab to stay signed in.
           </Alert>
         )}
       </aside>

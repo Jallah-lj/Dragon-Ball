@@ -114,7 +114,12 @@ export function attachRealtime(
   // Authenticate the handshake with the same session cookie as the HTTP API.
   io.use(async (socket, next) => {
     try {
-      const token = parseCookies(socket.handshake.headers.cookie).dbfc_sid;
+      const authToken = (socket.handshake.auth as { token?: unknown } | undefined)?.token;
+      const token =
+        parseCookies(socket.handshake.headers.cookie).dbfc_sid ??
+        (typeof authToken === 'string' && /^[A-Za-z0-9_-]{20,200}$/.test(authToken)
+          ? authToken
+          : undefined);
       if (!token) return next(new Error('UNAUTHORIZED'));
       const rows = await ctx.db
         .select({ session: sessions, user: users })

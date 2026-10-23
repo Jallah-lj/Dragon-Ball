@@ -118,7 +118,7 @@ export async function buildApp(
     origin: (origin, cb) => cb(null, !origin || config.allowedOrigins.includes(origin)),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-    allowedHeaders: ['content-type', 'x-csrf-token'],
+    allowedHeaders: ['content-type', 'x-csrf-token', 'authorization', 'x-auth-mode'],
   });
   if (config.RATE_LIMIT_ENABLED) {
     await app.register(rateLimit, {

@@ -423,6 +423,10 @@
   top: var(--space-3);
   right: var(--space-3);
 }
+/* Keep the title (and its lock icon) clear of the corner badge. */
+.choice:has(.choice__badge) .choice__title {
+  padding-right: 5.75rem;
+}
 .choice__check {
   position: absolute;
   bottom: var(--space-3);

@@ -17,6 +17,64 @@ export class ApiError extends Error {
 const BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 let memoryCsrf: string | null = null;
 
+// ---------------------------------------------------------------------------
+// Cookie-less fallback. Normally the session lives in an HttpOnly cookie. Some
+// browsers refuse cookies when the app runs inside another site's frame (for
+// example an embedded preview). The client then switches to "token mode": the
+// server returns the session token, which is kept for this tab only and sent as
+// an Authorization header.
+// ---------------------------------------------------------------------------
+const TOKEN_KEY = 'dbfc.session.v1';
+const MODE_KEY = 'dbfc.authMode.v1';
+
+function sessionGet(key: string): string | null {
+  try {
+    return sessionStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function sessionSet(key: string, value: string | null): void {
+  try {
+    if (value === null) sessionStorage.removeItem(key);
+    else sessionStorage.setItem(key, value);
+  } catch {
+    // Storage unavailable: the session lasts until the page is reloaded.
+  }
+}
+
+let sessionToken: string | null = sessionGet(TOKEN_KEY);
+let tokenMode = sessionGet(MODE_KEY) === 'token' || sessionToken !== null;
+
+/** True when the browser refused our cookies and header tokens are used instead. */
+export function isTokenMode(): boolean {
+  return tokenMode;
+}
+
+export function setTokenMode(on: boolean): void {
+  tokenMode = on;
+  sessionSet(MODE_KEY, on ? 'token' : null);
+}
+
+export function getSessionToken(): string | null {
+  return sessionToken;
+}
+
+export function setSessionToken(token: string | null): void {
+  sessionToken = token;
+  sessionSet(TOKEN_KEY, token);
+}
+
+/**
+ * Call after a server response, which always leaves a readable `dbfc_csrf`
+ * cookie behind when cookies work. If it is missing, cookies are blocked.
+ */
+export function detectBlockedCookies(): boolean {
+  if (!tokenMode && typeof document !== 'undefined' && !readCookie('dbfc_csrf')) setTokenMode(true);
+  return tokenMode;
+}
+
 export function setCsrfToken(token: string | null): void {
   memoryCsrf = token;
 }
@@ -35,6 +93,8 @@ export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   signal?: AbortSignal;
+  /** Internal: set when retrying after switching to token mode. */
+  retried?: boolean;
 }
 
 /** JSON API call with cookie session, CSRF header and typed errors. */
@@ -45,6 +105,10 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   if (method !== 'GET') {
     const token = csrfToken();
     if (token) headers['x-csrf-token'] = token;
+  }
+  if (tokenMode) {
+    headers['x-auth-mode'] = 'token';
+    if (sessionToken) headers.authorization = `Bearer ${sessionToken}`;
   }
   let res: Response;
   try {
@@ -74,6 +138,18 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     const err = (
       data as { error?: { code?: ErrorCode; message?: string; details?: unknown } } | undefined
     )?.error;
+    // The double-submit check failed because the browser refuses our cookies:
+    // switch to header tokens for this tab and retry once.
+    if (
+      res.status === 403 &&
+      err?.code === 'CSRF' &&
+      !tokenMode &&
+      !options.retried &&
+      !readCookie('dbfc_csrf')
+    ) {
+      setTokenMode(true);
+      return api<T>(path, { ...options, retried: true });
+    }
     // A 5xx without our JSON error envelope comes from a proxy/gateway, not the API.
     if (res.status >= 500 && !err?.code) {
       throw new ApiError(res.status, 'NETWORK', 'The Forest Chase server is unavailable.');

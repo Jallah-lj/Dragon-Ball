@@ -9,7 +9,15 @@ import {
   type ReactNode,
 } from 'react';
 import type { AuthResponseDTO, SessionUserDTO } from '@dbfc/shared';
-import { api, ApiError, isNetworkError, setCsrfToken } from './api';
+import {
+  api,
+  ApiError,
+  detectBlockedCookies,
+  getSessionToken,
+  isNetworkError,
+  setCsrfToken,
+  setSessionToken,
+} from './api';
 import { onSettingsChange, sanitizeSettings, settingsStore } from './settings';
 import { disconnectSocket } from './socket';
 
@@ -52,6 +60,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const setUser = useCallback((u: SessionUserDTO | null) => {
     userRef.current = u;
     setUserState(u);
+    // Signed out (or the session expired): forget any header token too.
+    if (u === null && getSessionToken()) setSessionToken(null);
   }, []);
 
   const pullSettings = useCallback(async () => {
@@ -99,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     api<AuthResponseDTO>('/api/auth/me').then(
       (res) => {
         if (cancelled) return;
+        detectBlockedCookies();
         setCsrfToken(res.csrfToken);
         setUser(res.user);
         setStatus('ready');
@@ -108,6 +119,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         if (isNetworkError(err)) setStatus('offline');
         else {
+          // The server answered, so a working browser now holds our CSRF cookie.
+          detectBlockedCookies();
           if (err instanceof ApiError && err.status === 401) setUser(null);
           setStatus('ready');
         }
@@ -142,6 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const handleAuth = useCallback(
     (res: AuthResponseDTO) => {
+      if (res.sessionToken) setSessionToken(res.sessionToken);
       setCsrfToken(res.csrfToken);
       setUser(res.user);
       setStatus('ready');

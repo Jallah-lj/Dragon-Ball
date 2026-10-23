@@ -27,6 +27,7 @@ import {
   rotateCsrf,
   setSessionCookie,
   type UserRow,
+  wantsTokenAuth,
 } from '../plugins/auth';
 import {
   createSession,
@@ -59,7 +60,10 @@ async function startSession(
   setSessionCookie(ctx, request, reply, token);
   request.sessionId = id;
   const csrfToken = rotateCsrf(ctx, request, reply);
-  return { user: await sessionUserDTO(ctx.db, user), csrfToken };
+  const body: AuthResponseDTO = { user: await sessionUserDTO(ctx.db, user), csrfToken };
+  // Only hand the raw token to JavaScript when the browser refuses cookies.
+  if (wantsTokenAuth(request)) body.sessionToken = token;
+  return body;
 }
 
 async function sendEmailToken(

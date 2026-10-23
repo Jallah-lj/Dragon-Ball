@@ -11,10 +11,24 @@ beforeAll(async () => {
 afterAll(async () => built.close());
 
 describe('CSRF and origin protection', () => {
-  it('rejects state-changing requests without a CSRF token', async () => {
-    const res = await built.app.inject({ method: 'POST', url: '/api/auth/guest', payload: {} });
+  it('rejects cookie-authenticated state changes without the CSRF token', async () => {
+    const c = new TestClient(built.app);
+    await c.guest();
+    const res = await built.app.inject({
+      method: 'POST',
+      url: '/api/runs',
+      payload: { mode: 'solo', difficulty: 'easy', stage: 'emerald' },
+      headers: { cookie: c.cookieHeader() }, // session cookie, but no x-csrf-token header
+    });
     expect(res.statusCode).toBe(403);
     expect(res.json().error.code).toBe('CSRF');
+    const forged = await built.app.inject({
+      method: 'POST',
+      url: '/api/runs',
+      payload: { mode: 'solo', difficulty: 'easy', stage: 'emerald' },
+      headers: { cookie: c.cookieHeader(), 'x-csrf-token': 'not-the-cookie-value' },
+    });
+    expect(forged.statusCode).toBe(403);
   });
 
   it('rejects requests from foreign origins even with a token', async () => {
@@ -24,6 +38,75 @@ describe('CSRF and origin protection', () => {
     expect(res.statusCode).toBe(403);
     const ok = await c.request('POST', '/api/auth/guest', {}, { origin: 'http://localhost:5173' });
     expect(ok.statusCode).toBe(201);
+  });
+});
+
+describe('header-token sessions (browsers that block cookies)', () => {
+  const inject = (
+    method: 'GET' | 'POST',
+    url: string,
+    headers: Record<string, string> = {},
+    payload?: object,
+  ) => built.app.inject({ method, url, headers, ...(payload ? { payload } : {}) });
+
+  it('only returns a session token when the client asks for token mode', async () => {
+    const normal = await inject('POST', '/api/auth/guest', {}, {});
+    expect(normal.statusCode).toBe(201);
+    expect(normal.json().sessionToken).toBeUndefined();
+    const token = await inject('POST', '/api/auth/guest', { 'x-auth-mode': 'token' }, {});
+    expect(token.statusCode).toBe(201);
+    expect(token.json().sessionToken).toMatch(/^[A-Za-z0-9_-]{40,}$/);
+  });
+
+  it('authenticates with an Authorization header and needs no CSRF cookie', async () => {
+    const created = await inject('POST', '/api/auth/guest', { 'x-auth-mode': 'token' }, {});
+    const { sessionToken, user } = created.json();
+    const auth = { authorization: `Bearer ${sessionToken}` };
+    const me = await inject('GET', '/api/auth/me', auth);
+    expect(me.statusCode).toBe(200);
+    expect(me.json().user.id).toBe(user.id);
+    const ticket = await inject('POST', '/api/runs', auth, {
+      mode: 'solo',
+      difficulty: 'easy',
+      stage: 'emerald',
+    });
+    expect(ticket.statusCode).toBe(201);
+    // Cross-site requests are still refused.
+    const foreign = await inject(
+      'POST',
+      '/api/runs',
+      { ...auth, origin: 'https://evil.example' },
+      { mode: 'solo', difficulty: 'easy', stage: 'emerald' },
+    );
+    expect(foreign.statusCode).toBe(403);
+    // Upgrading keeps the player and rotates the token.
+    const up = await inject(
+      'POST',
+      '/api/auth/upgrade',
+      { ...auth, 'x-auth-mode': 'token' },
+      { username: 'TokenWing', password: 'token mode password' },
+    );
+    expect(up.statusCode).toBe(200);
+    expect(up.json().user).toMatchObject({ id: user.id, isGuest: false });
+    expect((await inject('GET', '/api/auth/me', auth)).statusCode).toBe(401);
+    const fresh = { authorization: `Bearer ${up.json().sessionToken}` };
+    expect((await inject('GET', '/api/auth/me', fresh)).json().user.username).toBe('TokenWing');
+    // Logging out revokes the token.
+    expect((await inject('POST', '/api/auth/logout', fresh, {})).statusCode).toBe(204);
+    expect((await inject('GET', '/api/auth/me', fresh)).statusCode).toBe(401);
+  });
+
+  it('ignores malformed or unknown tokens', async () => {
+    expect((await inject('GET', '/api/auth/me', { authorization: 'Bearer nope' })).statusCode).toBe(
+      401,
+    );
+    expect(
+      (await inject('GET', '/api/auth/me', { authorization: `Bearer ${'x'.repeat(43)}` }))
+        .statusCode,
+    ).toBe(401);
+    expect((await inject('GET', '/api/auth/me', { authorization: 'Basic abc' })).statusCode).toBe(
+      401,
+    );
   });
 });
 

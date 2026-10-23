@@ -84,6 +84,18 @@ export function isAllowedOrigin(ctx: AppContext, request: FastifyRequest, origin
   );
 }
 
+/** Session token from an `Authorization: Bearer …` header (cookie-less fallback). */
+export function bearerToken(header: string | undefined): string | undefined {
+  if (!header) return undefined;
+  const match = /^Bearer\s+([A-Za-z0-9_-]{20,200})$/.exec(header.trim());
+  return match?.[1];
+}
+
+/** The client asked for a header token because its browser refuses our cookies. */
+export function wantsTokenAuth(request: FastifyRequest): boolean {
+  return request.headers['x-auth-mode'] === 'token';
+}
+
 export function registerAuth(app: FastifyInstance, ctx: AppContext): void {
   app.decorateRequest('user', null);
   app.decorateRequest('sessionId', null);
@@ -91,22 +103,38 @@ export function registerAuth(app: FastifyInstance, ctx: AppContext): void {
   app.addHook('onRequest', async (request, reply) => {
     if (!request.url.startsWith('/api/')) return;
 
-    // CSRF defence for state-changing requests: Origin check + double-submit token.
+    const cookieSession = request.cookies[SESSION_COOKIE];
+    const bearerSession = bearerToken(request.headers.authorization);
+
     if (UNSAFE.has(request.method)) {
+      // Cross-site requests are refused outright.
       const origin =
         request.headers.origin ??
         (request.headers.referer ? new URL(request.headers.referer).origin : undefined);
       if (origin && !isAllowedOrigin(ctx, request, origin)) {
         throw new AppError('CSRF', 'Request origin is not allowed.');
       }
-      const cookieToken = request.cookies[CSRF_COOKIE];
-      const headerToken = request.headers['x-csrf-token'];
-      if (!cookieToken || typeof headerToken !== 'string' || !safeEqual(cookieToken, headerToken)) {
-        throw new AppError('CSRF', 'Missing or invalid CSRF token. Reload the page and try again.');
+      // Cookies are sent automatically by browsers, so cookie-authenticated
+      // requests must also prove they came from our page (double-submit token).
+      // Header-token sessions (used when the browser blocks cookies) cannot be
+      // forged cross-site, because browsers never attach that header on their own.
+      if (cookieSession) {
+        const cookieToken = request.cookies[CSRF_COOKIE];
+        const headerToken = request.headers['x-csrf-token'];
+        if (
+          !cookieToken ||
+          typeof headerToken !== 'string' ||
+          !safeEqual(cookieToken, headerToken)
+        ) {
+          throw new AppError(
+            'CSRF',
+            'Missing or invalid CSRF token. Reload the page and try again.',
+          );
+        }
       }
     }
 
-    const token = request.cookies[SESSION_COOKIE];
+    const token = cookieSession ?? bearerSession;
     if (!token) return;
     const now = new Date();
     const rows = await ctx.db
@@ -123,7 +151,7 @@ export function registerAuth(app: FastifyInstance, ctx: AppContext): void {
       .limit(1);
     const row = rows[0];
     if (!row) {
-      clearSessionCookie(ctx, request, reply);
+      if (cookieSession) clearSessionCookie(ctx, request, reply);
       return;
     }
     request.user = row.user;

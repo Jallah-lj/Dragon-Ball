@@ -108,6 +108,44 @@ for (const [label, redisUrl] of variants) {
       expect(Math.abs(offset - Date.now())).toBeLessThan(5000);
     });
 
+    it('authenticates sockets with a header token when cookies are unavailable', async () => {
+      const res = await built.app.inject({
+        method: 'POST',
+        url: '/api/auth/guest',
+        headers: { 'x-auth-mode': 'token' },
+        payload: {},
+      });
+      const token = res.json().sessionToken as string;
+      const s: ClientSocket = io(url, {
+        path: '/socket.io',
+        transports: ['websocket'],
+        forceNew: true,
+        reconnection: false,
+        auth: { token },
+      });
+      sockets.push(s);
+      await new Promise<void>((resolve, reject) => {
+        s.on('connect', () => resolve());
+        s.on('connect_error', reject);
+      });
+      const listed = await call0<{ rooms: unknown[] }>(s, 'race:list');
+      expect(listed.ok).toBe(true);
+      const bad: ClientSocket = io(url, {
+        path: '/socket.io',
+        transports: ['websocket'],
+        forceNew: true,
+        reconnection: false,
+        auth: { token: 'x'.repeat(43) },
+      });
+      sockets.push(bad);
+      await expect(
+        new Promise((resolve, reject) => {
+          bad.on('connect', () => resolve(undefined));
+          bad.on('connect_error', reject);
+        }),
+      ).rejects.toThrow();
+    });
+
     it('runs a full race: lobby → ready → countdown → verified finish → ranked results', async () => {
       const a = await player('RacerA');
       const b = await player('RacerB');

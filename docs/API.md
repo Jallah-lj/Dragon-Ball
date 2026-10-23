@@ -4,7 +4,8 @@ Base path `/api`. JSON in, JSON out. Authentication is a session cookie (`dbfc_s
 
 ## Conventions
 
-- **CSRF.** Every `POST`, `PUT`, `PATCH` and `DELETE` must send `x-csrf-token` equal to the `dbfc_csrf` cookie. Call `GET /api/auth/csrf` (or `GET /api/auth/me`) first to receive it. Requests whose `Origin`/`Referer` is not the site itself or a configured `CORS_ORIGINS` entry are rejected.
+- **CSRF.** Requests whose `Origin`/`Referer` is not the site itself or a configured `CORS_ORIGINS` entry are rejected. Every `POST`, `PUT`, `PATCH` and `DELETE` sent with the session cookie must also carry `x-csrf-token` equal to the `dbfc_csrf` cookie — call `GET /api/auth/csrf` (or `GET /api/auth/me`) first to receive it.
+- **Cookie-less clients.** Send `x-auth-mode: token` with `register`, `login`, `guest` or `upgrade` and the response includes `sessionToken`; then authenticate with `Authorization: Bearer <sessionToken>` (Socket.IO: `auth: { token }`). Header-token requests need no CSRF token. The web client uses this only when the browser blocks cookies (e.g. inside an embedded frame).
 - **Errors.** `{ "error": { "code": "TEAM_FULL", "message": "Ironbark is full (8 members).", "details": { … } } }`. Validation errors use code `VALIDATION` with `details.fieldErrors` (`{ field: [message] }`). Codes: `BAD_REQUEST, VALIDATION, UNAUTHORIZED, FORBIDDEN, NOT_FOUND, CONFLICT, RATE_LIMITED, CSRF, GUEST_NOT_ALLOWED, TEAM_FULL, INVITE_EXPIRED, INVITE_INVALID, ALREADY_IN_TEAM, NOT_IN_TEAM, OWNER_MUST_TRANSFER, RUN_EXPIRED, RUN_ALREADY_SUBMITTED, RUN_INVALID, RUN_LOCKED, INSUFFICIENT_CRYSTALS, EMAIL_NOT_CONFIGURED, RACE_NOT_FOUND, RACE_FULL, RACE_STARTED, RACE_EXPIRED, INTERNAL, SERVICE_UNAVAILABLE`.
 - **Rate limits.** 300 requests/minute per IP overall, stricter on sensitive routes (noted below). Exceeding a limit returns `429 RATE_LIMITED`.
 - **Who can call.** _Public_ = no session needed. _Session_ = guest or account. _Account_ = registered (non-guest) players only.
@@ -37,6 +38,8 @@ Base path `/api`. JSON in, JSON out. Authentication is a session cookie (`dbfc_s
 | POST   | `/auth/verify-email`        | public            | `{ token }` → `204`                                                                          |
 | POST   | `/auth/resend-verification` | account           | → `{ ok, emailEnabled }`                                                                     |
 | DELETE | `/auth/account`             | session           | `{ confirm: "DELETE", password? }` → `204`; deletes all of the player's data                 |
+
+`AuthResponseDTO`: `{ user: SessionUserDTO, csrfToken, sessionToken? }` (`sessionToken` only for `x-auth-mode: token` requests).
 
 `SessionUserDTO`: `{ id, username, displayName, isGuest, email, emailVerified, avatar, selectedSkin, xp, level, crystals, createdAt, team: { id, name, tag, role } | null }`.
 

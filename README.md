@@ -260,7 +260,8 @@ Then open <http://localhost:3001>. The image (`Dockerfile`) is a multi-stage Nod
 
 - Sessions: 256-bit random tokens in an `HttpOnly`, `SameSite=Lax` cookie (`Secure` on https); only an HMAC of the token is stored. Sessions rotate on login/upgrade (no fixation) and can be listed and revoked individually or all at once.
 - Passwords: Argon2id (19 MiB, t=2, p=1) with a constant-time dummy check for unknown accounts; generic login errors; reset flows never reveal whether an email exists.
-- CSRF: double-submit token plus Origin/Referer verification on every state-changing request; WebSocket handshakes verify Origin too (no cross-site WebSocket hijacking).
+- CSRF: Origin/Referer verification on every state-changing request, plus a double-submit token whenever the request is authenticated by the session cookie; WebSocket handshakes verify Origin too (no cross-site WebSocket hijacking).
+- Cookie-less fallback: when a browser refuses cookies (for example third-party cookie blocking while the app is embedded in another site's frame), the client switches to **token mode** for that tab — the server returns the session token only to requests that ask for it (`x-auth-mode: token`), and the client sends it as `Authorization: Bearer …` (and in the Socket.IO handshake). Header tokens cannot be attached by other sites, so no CSRF cookie is needed; normal browsing keeps HttpOnly cookies.
 - Input validation with shared zod schemas; display names and team names are normalised (control, zero-width and bidi characters stripped). React escapes all output.
 - Rate limits on every route (stricter on auth, tickets, invites) and per-socket event budgets.
 - Helmet security headers with a strict Content-Security-Policy (`script-src 'self'`), HSTS, frame protection.

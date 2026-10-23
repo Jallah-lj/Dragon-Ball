@@ -73,6 +73,11 @@ export interface SessionUserDTO {
 export interface AuthResponseDTO {
   user: SessionUserDTO;
   csrfToken: string;
+  /**
+   * Session token for cookie-less clients. Only present when the request sent
+   * `x-auth-mode: token` (the browser refused cookies, e.g. in an embedded frame).
+   */
+  sessionToken?: string;
 }
 
 export interface ProgressDTO {
