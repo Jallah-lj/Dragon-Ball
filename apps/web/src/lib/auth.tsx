@@ -10,11 +10,13 @@ import {
 } from 'react';
 import type { AuthResponseDTO, SessionUserDTO } from '@dbfc/shared';
 import {
+  adoptSessionToken,
   api,
   ApiError,
   detectBlockedCookies,
   getSessionToken,
   isNetworkError,
+  onUnauthorized,
   setCsrfToken,
   setSessionToken,
 } from './api';
@@ -154,15 +156,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const handleAuth = useCallback(
-    (res: AuthResponseDTO) => {
-      if (res.sessionToken) setSessionToken(res.sessionToken);
+    async (res: AuthResponseDTO) => {
       setCsrfToken(res.csrfToken);
+      // Make sure the new session actually sticks; fall back to a per-tab
+      // header token when the browser refused the session cookie.
+      await adoptSessionToken(res.sessionToken);
       setUser(res.user);
       setStatus('ready');
       disconnectSocket(); // reconnect with the new session when needed
       return res.user;
     },
     [setUser],
+  );
+
+  // The server says "not signed in" while the page thinks otherwise: re-check, so
+  // the UI shows the sign-in prompt instead of failing requests.
+  useEffect(
+    () =>
+      onUnauthorized(() => {
+        if (userRef.current) void refresh().catch(() => undefined);
+      }),
+    [refresh],
   );
 
   const value = useMemo<AuthContextValue>(
@@ -172,10 +186,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refresh,
       setUser,
       async login(username, password) {
-        const u = handleAuth(
+        const u = await handleAuth(
           await api<AuthResponseDTO>('/api/auth/login', {
             method: 'POST',
             body: { username, password },
+            wantSessionToken: true,
           }),
         );
         void pullSettings();
@@ -183,17 +198,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       async register(input) {
         return handleAuth(
-          await api<AuthResponseDTO>('/api/auth/register', { method: 'POST', body: input }),
+          await api<AuthResponseDTO>('/api/auth/register', {
+            method: 'POST',
+            body: input,
+            wantSessionToken: true,
+          }),
         );
       },
       async guest() {
         return handleAuth(
-          await api<AuthResponseDTO>('/api/auth/guest', { method: 'POST', body: {} }),
+          await api<AuthResponseDTO>('/api/auth/guest', {
+            method: 'POST',
+            body: {},
+            wantSessionToken: true,
+          }),
         );
       },
       async upgrade(input) {
         return handleAuth(
-          await api<AuthResponseDTO>('/api/auth/upgrade', { method: 'POST', body: input }),
+          await api<AuthResponseDTO>('/api/auth/upgrade', {
+            method: 'POST',
+            body: input,
+            wantSessionToken: true,
+          }),
         );
       },
       async logout() {
@@ -213,8 +240,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (userRef.current) return userRef.current;
         if (status === 'offline') return null;
         try {
-          return handleAuth(
-            await api<AuthResponseDTO>('/api/auth/guest', { method: 'POST', body: {} }),
+          return await handleAuth(
+            await api<AuthResponseDTO>('/api/auth/guest', {
+              method: 'POST',
+              body: {},
+              wantSessionToken: true,
+            }),
           );
         } catch (err) {
           if (isNetworkError(err)) {

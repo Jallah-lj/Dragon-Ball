@@ -93,8 +93,51 @@ export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   signal?: AbortSignal;
+  /** Sign-in calls: ask the server to include the session token in its reply. */
+  wantSessionToken?: boolean;
   /** Internal: set when retrying after switching to token mode. */
   retried?: boolean;
+}
+
+const unauthorizedListeners = new Set<() => void>();
+
+/**
+ * Notified when the server answers 401 to a normal (non-auth) request, i.e. the
+ * page thinks it is signed in but the session did not reach the server.
+ */
+export function onUnauthorized(listener: () => void): () => void {
+  unauthorizedListeners.add(listener);
+  return () => unauthorizedListeners.delete(listener);
+}
+
+/** Does the browser send our session cookie back? (Checked right after signing in.) */
+export async function cookieSessionWorks(): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE}/api/auth/me`, {
+      credentials: 'include',
+      headers: { accept: 'application/json' },
+    });
+    return res.ok;
+  } catch {
+    return true; // Can't tell while offline; keep the default cookie mode.
+  }
+}
+
+/**
+ * Called with the token from a sign-in reply. Cookie sessions stay the default:
+ * the token is only kept (for this tab) when the browser did not store the
+ * session cookie — e.g. third-party cookie blocking inside an embedded frame.
+ */
+export async function adoptSessionToken(token: string | undefined): Promise<void> {
+  if (!token) return;
+  if (tokenMode) {
+    setSessionToken(token);
+    return;
+  }
+  if (!(await cookieSessionWorks())) {
+    setTokenMode(true);
+    setSessionToken(token);
+  }
 }
 
 /** JSON API call with cookie session, CSRF header and typed errors. */
@@ -106,10 +149,8 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     const token = csrfToken();
     if (token) headers['x-csrf-token'] = token;
   }
-  if (tokenMode) {
-    headers['x-auth-mode'] = 'token';
-    if (sessionToken) headers.authorization = `Bearer ${sessionToken}`;
-  }
+  if (tokenMode || options.wantSessionToken) headers['x-auth-mode'] = 'token';
+  if (tokenMode && sessionToken) headers.authorization = `Bearer ${sessionToken}`;
   let res: Response;
   try {
     res = await fetch(`${BASE}${path}`, {
@@ -149,6 +190,9 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     ) {
       setTokenMode(true);
       return api<T>(path, { ...options, retried: true });
+    }
+    if (res.status === 401 && !path.startsWith('/api/auth/')) {
+      for (const listener of unauthorizedListeners) listener();
     }
     // A 5xx without our JSON error envelope comes from a proxy/gateway, not the API.
     if (res.status >= 500 && !err?.code) {

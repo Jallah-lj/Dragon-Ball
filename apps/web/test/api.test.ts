@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  adoptSessionToken,
   api,
   ApiError,
   detectBlockedCookies,
+  getSessionToken,
+  onUnauthorized,
   fieldErrors,
   isNetworkError,
   isTokenMode,
@@ -122,5 +125,56 @@ describe('cookie-less token mode', () => {
     const err = await api('/api/x', { method: 'POST', body: {} }).catch((e: unknown) => e);
     expect((err as ApiError).code).toBe('CSRF');
     expect(spy).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('verifying that a new session sticks', () => {
+  it('keeps cookie mode and discards the token when the session cookie works', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ user: { id: 'u1' } }), { status: 200 }),
+    );
+    await adoptSessionToken('k'.repeat(43));
+    expect(isTokenMode()).toBe(false);
+    expect(getSessionToken()).toBeNull();
+    expect(sessionStorage.getItem('dbfc.session.v1')).toBeNull();
+  });
+
+  it('switches to token mode and keeps the token when the browser dropped the session cookie', async () => {
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ error: { code: 'UNAUTHORIZED', message: 'Not signed in.' } }),
+          { status: 401 },
+        ),
+      );
+    await adoptSessionToken('k'.repeat(43));
+    expect(spy.mock.calls[0]![0]).toContain('/api/auth/me');
+    expect(isTokenMode()).toBe(true);
+    expect(getSessionToken()).toBe('k'.repeat(43));
+  });
+
+  it('asks for the token on sign-in calls even in cookie mode', async () => {
+    const spy = mockFetch(200, {
+      user: { id: 'u1' },
+      csrfToken: 'c',
+      sessionToken: 'k'.repeat(43),
+    });
+    await api('/api/auth/login', { method: 'POST', body: {}, wantSessionToken: true });
+    const headers = spy.mock.calls[0]![1]!.headers as Record<string, string>;
+    expect(headers['x-auth-mode']).toBe('token');
+    expect(headers.authorization).toBeUndefined();
+  });
+
+  it('reports 401s on normal requests (but not on sign-in calls) so the page can re-check', async () => {
+    const seen: string[] = [];
+    const off = onUnauthorized(() => seen.push('401'));
+    mockFetch(401, {
+      error: { code: 'UNAUTHORIZED', message: 'Please sign in or play as a guest first.' },
+    });
+    await api('/api/collection').catch(() => undefined);
+    await api('/api/auth/login', { method: 'POST', body: {} }).catch(() => undefined);
+    off();
+    expect(seen).toEqual(['401']);
   });
 });
