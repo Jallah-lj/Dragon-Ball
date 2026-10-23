@@ -1,0 +1,80 @@
+/*
+ * Design tokens — "lantern-lit forest" palette.
+ * Forest greens and bark browns for surfaces, parchment for text, warm amber
+ * and ember orange for actions, restrained gold for highlights.
+ */
+:root {
+  /* Surfaces */
+  --ink-950: #0d120e;
+  --ink-900: #121a13;
+  --forest-850: #172219;
+  --forest-800: #1b291d;
+  --forest-750: #213223;
+  --forest-700: #283c29;
+  --forest-600: #324b31;
+  --moss-500: #4f7a3a;
+  --moss-400: #6d9a4a;
+  --fern-300: #a9c27a;
+  --bark-800: #2a1f17;
+  --bark-700: #3b2b1f;
+  --bark-600: #5a4130;
+  --bark-500: #7a5a40;
+  --bark-400: #9b7a57;
+
+  /* Text */
+  --parchment-50: #fbf5e6;
+  --parchment-100: #f4ead2;
+  --parchment-200: #e6d6b2;
+  --parchment-300: #cdb98f;
+  --parchment-400: #a8977a;
+
+  /* Accents */
+  --amber-300: #f6cf7c;
+  --amber-400: #f2b85a;
+  --amber-500: #e8a33d;
+  --ember-400: #ef7a3e;
+  --ember-500: #e2622b;
+  --ember-600: #c24e1f;
+  --ember-700: #9a3c17;
+  --gold-400: #d9b45a;
+  --gold-500: #c9963f;
+
+  /* Status (always paired with an icon or label — never colour alone) */
+  --ok: #8cbf55;
+  --warn: #f2b85a;
+  --danger: #e8644f;
+  --info: #9cc3b0;
+
+  /* Typography */
+  --font-display: 'Grenze Gotisch Variable', 'Grenze Gotisch', Georgia, serif;
+  --font-body: 'Alegreya Sans', 'Segoe UI', system-ui, sans-serif;
+  --font-caps: 'Alegreya SC', 'Alegreya Sans', Georgia, serif;
+
+  --text-xs: 0.8125rem;
+  --text-sm: 0.9375rem;
+  --text-md: 1.0625rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.6rem;
+  --text-2xl: 2.2rem;
+  --text-3xl: 3rem;
+
+  /* Spacing & shape */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  --shadow-panel: 0 1px 0 rgba(255, 240, 200, 0.06) inset, 0 10px 30px rgba(0, 0, 0, 0.35);
+  --focus-ring: 0 0 0 3px var(--ink-900), 0 0 0 6px var(--amber-300);
+
+  --header-h: 64px;
+  --content-w: 1120px;
+
+  color-scheme: dark;
+}

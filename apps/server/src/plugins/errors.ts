@@ -1,0 +1,62 @@
+import type { FastifyError, FastifyInstance } from 'fastify';
+import { z, ZodError } from 'zod';
+import type { ApiErrorBody } from '@dbfc/shared';
+import { AppError } from '../lib/errors';
+
+export function sendError(
+  code: ApiErrorBody['error']['code'],
+  message: string,
+  details?: unknown,
+): ApiErrorBody {
+  return { error: { code, message, ...(details !== undefined ? { details } : {}) } };
+}
+
+/**
+ * Error envelope + the single not-found handler. With `spa`, unknown non-API
+ * GET routes render the client app (index.html) instead of a 404.
+ */
+export function registerErrorHandling(app: FastifyInstance, options: { spa?: boolean } = {}): void {
+  app.setErrorHandler((error: FastifyError | Error, request, reply) => {
+    if (error instanceof AppError) {
+      return reply.status(error.status).send(sendError(error.code, error.message, error.details));
+    }
+    if (error instanceof ZodError) {
+      const flat = z.flattenError(error);
+      const first = error.issues[0];
+      return reply.status(400).send(
+        sendError('VALIDATION', first?.message ?? 'Invalid request.', {
+          fieldErrors: flat.fieldErrors,
+          formErrors: flat.formErrors,
+        }),
+      );
+    }
+    const fe = error as FastifyError;
+    if (fe.statusCode === 429) {
+      return reply
+        .status(429)
+        .send(sendError('RATE_LIMITED', 'Too many requests. Take a breath and try again shortly.'));
+    }
+    if (
+      fe.validation ||
+      fe.code === 'FST_ERR_CTP_INVALID_MEDIA_TYPE' ||
+      fe.code === 'FST_ERR_CTP_EMPTY_JSON_BODY' ||
+      fe.statusCode === 400
+    ) {
+      return reply.status(400).send(sendError('BAD_REQUEST', 'Malformed request.'));
+    }
+    if (fe.statusCode === 413) {
+      return reply.status(413).send(sendError('BAD_REQUEST', 'Request body is too large.'));
+    }
+    request.log.error({ err: error }, 'Unhandled error');
+    return reply.status(500).send(sendError('INTERNAL', 'Something went wrong on our side.'));
+  });
+
+  app.setNotFoundHandler((request, reply) => {
+    const isApi = request.url.startsWith('/api/') || request.url.startsWith('/socket.io');
+    if (options.spa && request.method === 'GET' && !isApi) {
+      return reply.header('cache-control', 'no-cache').sendFile('index.html');
+    }
+    if (isApi) return reply.status(404).send(sendError('NOT_FOUND', 'No such endpoint.'));
+    return reply.status(404).send('Not found');
+  });
+}

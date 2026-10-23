@@ -1,0 +1,10 @@
+node_modules
+dist
+dist-e2e
+build
+coverage
+package-lock.json
+apps/server/drizzle/meta
+playwright-report
+test-results
+.data
