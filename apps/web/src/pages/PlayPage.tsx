@@ -133,36 +133,32 @@ export default function PlayPage() {
     let seed = mode === 'daily' ? dailySeed() : randomSeed();
     let abilities: AbilityLoadout = localUnlocks().abilities;
     if (mode !== 'tutorial' && auth.status !== 'offline') {
-      try {
-        await auth.ensureSession();
-        ticket = await api<RunTicketDTO>('/api/runs', {
-          method: 'POST',
-          body: { mode, difficulty, stage },
-        });
-        seed = ticket.seed;
-        abilities = ticket.abilities;
-      } catch (err) {
-        if (err instanceof ApiError && err.code === 'RUN_LOCKED') {
-          if (id === attempt.current) {
-            setError(err.message);
-            setPhase('error');
+      // A session may be impossible (e.g. third-party cookies blocked in an
+      // embedded frame); solo play then continues offline instead of failing.
+      const user = await auth.ensureSession().catch(() => null);
+      if (user) {
+        try {
+          ticket = await api<RunTicketDTO>('/api/runs', {
+            method: 'POST',
+            body: { mode, difficulty, stage },
+          });
+          seed = ticket.seed;
+          abilities = ticket.abilities;
+        } catch (err) {
+          const recoverable =
+            isNetworkError(err) ||
+            (err instanceof ApiError &&
+              (err.status === 429 || err.status === 401 || err.code === 'CSRF'));
+          if (!recoverable) {
+            if (id === attempt.current) {
+              setError(errorMessage(err));
+              setPhase('error');
+            }
+            return;
           }
-          return;
+          // Server unreachable, busy or session not kept: offline (unranked) run.
+          ticket = null;
         }
-        // Network down, rate limited, or the browser refused our session cookie
-        // (401 after creating a guest): fall back to an offline run.
-        if (
-          !isNetworkError(err) &&
-          !(err instanceof ApiError && (err.status === 429 || err.status === 401))
-        ) {
-          if (id === attempt.current) {
-            setError(errorMessage(err));
-            setPhase('error');
-          }
-          return;
-        }
-        // Server unreachable or busy: fall back to an offline (unranked) run.
-        ticket = null;
       }
     }
     if (mode === 'tutorial') abilities = { dash: true, leap: true, shield: false };
